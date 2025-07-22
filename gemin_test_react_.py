@@ -35,7 +35,7 @@ def semantic_search(query: str) -> str:
       SELECT {', '.join(cols)}, 1 - (embeddings <=> %s::vector) AS similarity
       FROM work_orders
       ORDER BY embeddings <=> %s::vector
-      LIMIT 5;
+      LIMIT 3;
     """
     with psycopg2.connect(PG_CONN) as conn, conn.cursor() as cur:
         cur.execute(sql, (vec, vec))
@@ -55,7 +55,7 @@ def semantic_search(query: str) -> str:
 # ——— Nodos del flujo —————————————————————————————————————————————————
 def decide_action(state: ChatState) -> Dict:
     resp = LLM.invoke([
-        SystemMessage("Si menciona buscar/encontrar/similares responde 'search', sino 'direct'"),
+        SystemMessage("Si menciona buscar/encontrar/similares/ADDs o conceptos aeronautica responde 'search', sino 'direct'"),
         HumanMessage(state["input"])
     ])
     return {"next_action": "search" if "search" in resp.content.lower() else "direct"}
@@ -67,8 +67,32 @@ def run_search(state: ChatState) -> Dict:
 
 def compute_insights(state: ChatState) -> Dict:
     recs = state["records"]
-    avg = sum(r["similarity"] for r in recs)/len(recs) if recs else 0
-    return {"insights": {"total": len(recs), "avg_sim": avg}}
+    avg = sum(r["similarity"] for r in recs) / len(recs) if recs else 0
+
+    # Prepara un resumen de los records para el LLM
+   # resumen = "\n".join(
+       # f"- WO: {r['wo_id']}, Desc: {r['description']}, Parts: {r['part_numbers']}" for r in recs
+   # )
+    prompt = (
+        f"Consulta del usuario: {state['input']}\n"
+        f"Resultados similares encontrados:\n{recs}\n"
+        "Analiza los resultados y responde de forma breve y concisa (máx. 50 palabras):\n"
+        "1. Caso más similar.\n"
+        "2. Solo si el usuario mencionó “AMM”, indica qué AMM se repite.\n"
+        "3. Solo si el usuario mencionó “part” o “PN-”, indica qué part numbers se repiten y si no repetidos haz un resumen de los utilizados\n"
+        "4. Menciona cualquier otro patrón relevante.\n"
+        "5. Siempre calcula el promedio entre registros de los campos numericos, como man_hours (si los tienes en los registros)"
+    )
+    # Llama al LLM para obtener el análisis
+    analysis = LLM.invoke([HumanMessage(prompt)]).content
+
+    return {
+        "insights": {
+            "total": len(recs),
+            "avg_sim": avg,
+            "llm_analysis": analysis
+        }
+    }
 
 def generate_response(state: ChatState) -> Dict:
     if state["next_action"] == "direct":
@@ -107,3 +131,5 @@ if __name__ == "__main__":
     user_input = input("Ingrese su consulta: ")
     salida = run_workflow(user_input)
     print(salida["response"])
+    print(salida["insights"])
+

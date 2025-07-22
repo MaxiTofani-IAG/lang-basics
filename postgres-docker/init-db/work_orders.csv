@@ -1,3 +1,4 @@
+wo_id,opco,technician,amm,description,ground_time,man_hours,part_numbers
 WO-12361,EI,Carlos García,AMM-32,Landing gear hydraulic leak,2h 15m,3.8,"[""PN-010"",""PN-011""]"
 WO-12362,EI,Lucía Fernández,AMM-33,Flap actuator corrosion,1h 30m,2.0,"[""PN-012"",""PN-013""]"
 WO-12363,EI,Andrés Martínez,AMM-27,Elevator trim misalignment,1h 10m,1.7,"[""PN-014"",""PN-015""]"
@@ -18,3 +19,5 @@ WO-12377,EI,Fernando Ortiz,AMM-33,Valve spring fracture,1h 50m,2.7,"[""PN-042"",
 WO-12378,EI,Raquel Blanco,AMM-21,Emergency light bulb out,0h 30m,0.8,"[""PN-044"",""PN-045""]"
 WO-12379,EI,Gonzalo Medina,AMM-32,Shock strut leak,2h 10m,3.3,"[""PN-046"",""PN-047""]"
 WO-12380,EI,Ana Beltrán,AMM-27,Elevator hinge crack,1h 40m,2.6,"[""PN-048"",""PN-049""]"
+WO-12381,EI,Laura Ruiz,AMM-21,Smoke detection sensor warning,1h 00m,1.1,"[""PN-036"",""PN-037""]"
+WO-12382,EI,Diego Castillo,AMM-33,Smoke detection false alarm,1h 05m,1.2,"[""PN-036"",""PN-037""]"
