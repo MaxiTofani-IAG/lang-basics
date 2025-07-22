@@ -1,5 +1,10 @@
 langgraph 
 langchain 
+langchain-huggingface
 langchain-google-genai
+langchain-community
+sentence-transformers
+langchain_postgres
 python-dotenv
 ipython
+psycopg2-binary
