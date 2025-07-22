@@ -1,53 +1,65 @@
-# LangLab: Boilerplate básico para LangGraph/LangChain
+# Lang-Lab PoC: PostgreSQL + pgvector + Embeddings
 
-Este proyecto es un punto de partida (boilerplate) para experimentar con [LangGraph](https://github.com/langchain-ai/langgraph) y [LangChain](https://github.com/langchain-ai/langchain), usando agentes ReAct y herramientas personalizadas. El objetivo es facilitar la creación de asistentes conversacionales que razonan paso a paso y pueden usar herramientas externas.
+Este proyecto es una prueba de concepto (PoC) para búsquedas semánticas usando PostgreSQL con la extensión pgvector y generación de embeddings con Python.
 
-## Estructura
-
-- [`react_basic.py`](react_basic.py): Ejemplo básico de agente ReAct con herramientas simples.
-- [`react_state.py`](react_state.py): Ejemplo avanzado usando grafo de estado para manejar contexto y resumen de conversación.
-- [`prompts.txt`](prompts.txt): Ejemplo de prompt de usuario.
-- [`requirements.txt`](requirements.txt): Dependencias necesarias.
-- [`.env`](.env): Archivo para la API Key de Gemini.
+---
 
 ## Requisitos
 
-- Python 3.11
-- Clave de API de Google Gemini (añádela en `.env` como `GEMINI_API_KEY`)
+- Docker y Docker Compose
+- Python 3.8+
+- Instalar dependencias Python:
+  ```sh
+  pip install -r requirements.txt
+  ```
 
-## Instalación
+---
+
+## Uso paso a paso
+
+### 1. Levantar la base de datos limpia
 
 ```sh
-pip install -r requirements.txt
+docker compose -f .\postgres-docker\docker-compose.yml down -v
+docker compose -f .\postgres-docker\docker-compose.yml up -d
 ```
 
-## Uso
+Esto crea la base de datos, instala la extensión pgvector y carga los datos iniciales desde los scripts y CSV.
 
-1. Añade tu clave de Gemini en el archivo `.env`:
-    ```
-    GEMINI_API_KEY="tu_clave_aquí"
-    ```
-2. Ejecuta el ejemplo básico:
-    ```sh
-    python react_basic.py
-    ```
-   O el ejemplo con grafo de estado:
-    ```sh
-    python react_state.py
-    ```
+---
 
-3. Escribe tu mensaje cuando el agente lo solicite.
+### 2. Generar embeddings para los registros
 
-## ¿Qué hace este proyecto?
+```sh
+python emb_gen.py
+```
 
-- Permite probar agentes conversacionales que razonan antes de responder.
-- Incluye herramientas de ejemplo (`get_weather`, `get_motivation`) que el agente puede usar.
-- Muestra cómo estructurar respuestas y acceder al historial de mensajes.
-- El archivo `react_state.py` muestra cómo usar un grafo de estado para resumir y mejorar el contexto conversacional.
+Este script conecta a la base, genera embeddings para los work orders y los guarda en la columna `embeddings`.
 
-## Objetivo
+---
 
-Crear una base sencilla y funcional para desarrollar asistentes conversacionales con LangGraph/LangChain, facilitando la extensión y personalización para proyectos propios.
+### 3. Ejecutar la demo interactiva
+
+```sh
+python .\gemin_test_react_.py
+```
+
+Se abrirá un prompt para que escribas tu consulta. El sistema buscará los work orders más similares y generará una respuesta.
+
+---
+
+## Notas
+
+- Puedes modificar los datos en `init-db/work_orders.csv` y reiniciar la base para probar con otros ejemplos.
+- Si cambias la estructura de la tabla, recuerda actualizar los scripts y el generador de embeddings.
+- Asegúrate de que los embeddings estén generados antes de probar la búsqueda semántica.
+
+---
+
+## Troubleshooting
+
+- Si no ves resultados en la búsqueda, revisa que los embeddings estén generados y que la base tenga datos.
+- Para limpiar todo y empezar de cero, usa el comando `docker compose ... down -v`.
 
 ---
 
