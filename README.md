@@ -16,6 +16,7 @@ Este proyecto es una prueba de concepto (PoC) para búsquedas semánticas usando
 ---
 
 ## Uso paso a paso
+Crear el venv en instalar las dependencias (Hay un freeze y el que no esta versionado)
 
 ### 1. Levantar la base de datos limpia
 
