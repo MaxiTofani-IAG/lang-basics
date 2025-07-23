@@ -39,13 +39,53 @@ Este script conecta a la base, genera embeddings para los work orders y los guar
 
 ---
 
-### 3. Ejecutar la demo interactiva
+### 3. Configurar variables de entorno
+
+Copia el archivo de ejemplo y configura tus variables:
+
+```sh
+cp env.example .env
+```
+
+Edita `.env` y configura:
+- `GEMINI_API_KEY`: Tu clave de API de Google Gemini
+- `PG_CONN`: Cadena de conexión a PostgreSQL (por defecto está configurada)
+
+---
+
+### 4. Ejecutar la demo interactiva (modo legacy)
 
 ```sh
 python .\gemin_test_react_.py
 ```
 
 Se abrirá un prompt para que escribas tu consulta. El sistema buscará los work orders más similares y generará una respuesta.
+
+---
+
+### 5. Ejecutar el servidor FastAPI
+
+Para usar la API conversacional:
+
+```sh
+uvicorn main:app --host 0.0.0.0 --port 5001 --reload
+```
+
+Esto iniciará el servidor en `http://localhost:5001`. Puedes:
+
+- Ver la documentación interactiva en: `http://localhost:5001/docs`
+- Probar el health check en: `http://localhost:5001/health`
+- Usar el endpoint de chat: `POST http://localhost:5001/chat`
+
+**Ejemplo de uso del endpoint `/chat`:**
+
+```bash
+curl -X POST "http://localhost:5001/chat" \
+     -H "Content-Type: application/json" \
+     -d '{"message": "How do I fix a leaking pipe?"}'
+```
+
+El endpoint retorna una respuesta en streaming (Server-Sent Events) que puedes consumir desde una aplicación frontend.
 
 ---
 
