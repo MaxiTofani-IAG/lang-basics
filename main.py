@@ -69,28 +69,58 @@ def semantic_search(query: str) -> str:
     try:
         vec = EMB.embed_query(query)
         cols = ["wo_id","technician","opco","amm","description","ground_time","man_hours","part_numbers"]
-        sql = f"""
-          SELECT {', '.join(cols)}, 1 - (embeddings <=> %s::vector) AS similarity
-          FROM work_orders
-          ORDER BY embeddings <=> %s::vector
-          LIMIT 3;
-        """
+        
+        # First, let's check if the embeddings column exists and has data
+        check_sql = "SELECT COUNT(*) FROM work_orders WHERE embeddings IS NOT NULL LIMIT 1;"
+        
         with psycopg2.connect(PG_CONN) as conn, conn.cursor() as cur:
-            cur.execute(sql, (vec, vec))
+            # Check embeddings availability
+            try:
+                cur.execute(check_sql)
+                has_embeddings = cur.fetchone()[0] > 0
+            except Exception as e:
+                logger.warning(f"Embeddings column might not exist: {e}")
+                has_embeddings = False
+            
+            if has_embeddings:
+                # Use semantic search with embeddings
+                sql = f"""
+                  SELECT {', '.join(cols)}, 1 - (embeddings <=> %s::vector) AS similarity
+                  FROM work_orders
+                  WHERE embeddings IS NOT NULL
+                  ORDER BY embeddings <=> %s::vector
+                  LIMIT 3;
+                """
+                cur.execute(sql, (vec, vec))
+            else:
+                # Fallback to text search if embeddings not available
+                logger.info("Using fallback text search instead of embeddings")
+                sql = f"""
+                  SELECT {', '.join(cols)}, 0.5 AS similarity
+                  FROM work_orders
+                  WHERE description ILIKE %s
+                  LIMIT 3;
+                """
+                cur.execute(sql, (f"%{query}%",))
+            
             rows = cur.fetchall()
 
         results = []
         for row in rows:
             rec = dict(zip(cols + ["similarity"], row))
-            # Convert Decimals to float
+            # Convert Decimals to float and handle None similarities
             for k, v in rec.items():
                 if isinstance(v, Decimal):
                     rec[k] = float(v)
+                elif k == "similarity" and v is None:
+                    rec[k] = 0.0  # Default similarity if None
             results.append(rec)
 
+        logger.info(f"Search found {len(results)} results")
         return json.dumps(results)
     except Exception as e:
         logger.error(f"Error in semantic search: {e}")
+        # Return empty results instead of failing completely
         return json.dumps([])
 
 # ——— Workflow Nodes ——————————————————————————————————————————————————
@@ -120,7 +150,18 @@ def compute_insights(state: ChatState) -> Dict:
     """Compute insights from search results"""
     try:
         recs = state["records"]
-        avg = sum(r["similarity"] for r in recs) / len(recs) if recs else 0
+        if not recs:
+            return {
+                "insights": {
+                    "total": 0,
+                    "avg_sim": 0.0,
+                    "llm_analysis": "No relevant work orders found for your query."
+                }
+            }
+
+        # Safely calculate average similarity, handling None values
+        similarities = [r.get("similarity") for r in recs if r.get("similarity") is not None]
+        avg = sum(similarities) / len(similarities) if similarities else 0.0
 
         prompt = (
             f"User query: {state['input']}\n"
@@ -138,13 +179,20 @@ def compute_insights(state: ChatState) -> Dict:
         return {
             "insights": {
                 "total": len(recs),
-                "avg_sim": avg,
+                "avg_sim": float(avg),
                 "llm_analysis": analysis
             }
         }
     except Exception as e:
         logger.error(f"Error in compute_insights: {e}")
-        return {"insights": {"total": 0, "avg_sim": 0, "llm_analysis": "Error analyzing results"}}
+        # Return a user-friendly response instead of failing
+        return {
+            "insights": {
+                "total": len(state.get("records", [])),
+                "avg_sim": 0.0,
+                "llm_analysis": f"Found {len(state.get('records', []))} work order(s) related to your query. Please check the detailed results."
+            }
+        }
 
 def generate_response(state: ChatState) -> Dict:
     """Generate final response"""
@@ -153,15 +201,30 @@ def generate_response(state: ChatState) -> Dict:
             response = LLM.invoke([HumanMessage(state["input"])]).content
             return {"response": response}
         
-        i, r = state["insights"], state["records"]
+        i, r = state.get("insights", {}), state.get("records", [])
         if not r:
             return {"response": "No relevant work orders found for your query."}
         
-        # Use the LLM analysis as the response
-        return {"response": i["llm_analysis"]}
+        # Return structured data for card display instead of text analysis
+        structured_response = {
+            "type": "work_orders",
+            "data": {
+                "query": state["input"],
+                "total_found": i.get("total", len(r)),
+                "avg_similarity": i.get("avg_sim", 0.0),
+                "work_orders": r[:3]  # Limit to top 3 results
+            }
+        }
+        
+        return {"response": json.dumps(structured_response)}
     except Exception as e:
         logger.error(f"Error in generate_response: {e}")
-        return {"response": "I encountered an error processing your request. Please try again."}
+        # Always provide a response to avoid frontend issues
+        records = state.get("records", [])
+        if records:
+            return {"response": f"Found {len(records)} work orders related to your query, but encountered an issue with detailed analysis. Please try rephrasing your question."}
+        else:
+            return {"response": "I encountered an error processing your request. Please try again with a different query."}
 
 # ——— Build Workflow Graph ——————————————————————————————————————————————
 wf = StateGraph(ChatState)
@@ -192,9 +255,27 @@ async def generate_streaming_response(user_input: str):
         
         # Execute the workflow
         result = workflow.invoke(initial_state)
-        response_text = result.get("response", "No response generated")
+        response_text = result.get("response", "")
         
-        # Stream the response word by word
+        # Ensure we have a response
+        if not response_text or response_text.strip() == "":
+            response_text = "I couldn't process your request properly. Please try rephrasing your question."
+            logger.warning(f"Empty response generated for input: {user_input}")
+        
+        logger.info(f"Generated response: {response_text[:100]}...")
+        
+        # Check if response is structured JSON for cards
+        try:
+            parsed_response = json.loads(response_text)
+            if isinstance(parsed_response, dict) and parsed_response.get("type") == "work_orders":
+                # Send structured data as a single message
+                yield f"data: {json.dumps({'type': 'cards', 'data': parsed_response['data'], 'done': True})}\n\n"
+                return
+        except (json.JSONDecodeError, TypeError):
+            # Not JSON, continue with text streaming
+            pass
+        
+        # Stream the response word by word for regular text
         words = response_text.split()
         for i, word in enumerate(words):
             if i == len(words) - 1:
@@ -205,7 +286,7 @@ async def generate_streaming_response(user_input: str):
             
     except Exception as e:
         logger.error(f"Error in generate_streaming_response: {e}")
-        error_message = "I encountered an error processing your request. Please try again."
+        error_message = "I encountered an error processing your request. Please try again with a different question."
         yield f"data: {json.dumps({'token': error_message, 'done': True})}\n\n"
 
 # ——— API Endpoints ——————————————————————————————————————————————————————
@@ -245,6 +326,66 @@ async def health_check():
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return {"status": "unhealthy", "error": str(e)}
+
+@app.get("/diagnostics")
+async def diagnostics():
+    """Diagnostic endpoint to check database structure and embeddings"""
+    try:
+        diagnostics_info = {}
+        
+        with psycopg2.connect(PG_CONN) as conn:
+            with conn.cursor() as cur:
+                # Check if work_orders table exists
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_name = 'work_orders'
+                    );
+                """)
+                table_exists = cur.fetchone()[0]
+                diagnostics_info["work_orders_table_exists"] = table_exists
+                
+                if table_exists:
+                    # Check table structure
+                    cur.execute("""
+                        SELECT column_name, data_type 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'work_orders'
+                        ORDER BY ordinal_position;
+                    """)
+                    columns = cur.fetchall()
+                    diagnostics_info["table_structure"] = dict(columns)
+                    
+                    # Count total records
+                    cur.execute("SELECT COUNT(*) FROM work_orders;")
+                    total_records = cur.fetchone()[0]
+                    diagnostics_info["total_records"] = total_records
+                    
+                    # Check if embeddings column exists and has data
+                    has_embeddings_column = "embeddings" in diagnostics_info["table_structure"]
+                    diagnostics_info["has_embeddings_column"] = has_embeddings_column
+                    
+                    if has_embeddings_column:
+                        cur.execute("SELECT COUNT(*) FROM work_orders WHERE embeddings IS NOT NULL;")
+                        records_with_embeddings = cur.fetchone()[0]
+                        diagnostics_info["records_with_embeddings"] = records_with_embeddings
+                        
+                        # Check if pgvector extension is available
+                        try:
+                            cur.execute("SELECT extname FROM pg_extension WHERE extname = 'vector';")
+                            vector_ext = cur.fetchone()
+                            diagnostics_info["pgvector_extension"] = vector_ext is not None
+                        except Exception as e:
+                            diagnostics_info["pgvector_extension"] = False
+                            diagnostics_info["pgvector_error"] = str(e)
+                    else:
+                        diagnostics_info["records_with_embeddings"] = 0
+                        diagnostics_info["pgvector_extension"] = False
+                
+        return {"status": "success", "diagnostics": diagnostics_info}
+    except Exception as e:
+        logger.error(f"Diagnostics failed: {e}")
+        return {"status": "error", "error": str(e)}
 
 # ——— Run Server ——————————————————————————————————————————————————————————
 if __name__ == "__main__":

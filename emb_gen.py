@@ -24,7 +24,7 @@ def generate_embeddings():
     conn = connect_db()
     with conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT amm, description, ground_time, part_numbers
+            SELECT wo_id, amm, description, ground_time, part_numbers
             FROM work_orders
             WHERE embeddings IS NULL
         """)
