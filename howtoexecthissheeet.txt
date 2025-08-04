@@ -1,7 +1,0 @@
-## Commands para la poc (en orden)
-docker compose -f .\postgres-docker\docker-compose.yml down -v
-docker compose -f .\postgres-docker\docker-compose.yml up -d
-python emb_gen.py
-
-# Exec del poc
- python .\gemin_test_react_.py   

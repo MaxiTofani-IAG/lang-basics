@@ -18,22 +18,27 @@ class ChatState(TypedDict):
 
 # ——— Configuración ——————————————————————————————————————————————————
 load_dotenv()
-PG_CONN = os.getenv("PG_CONN", "postgresql://user:pass@localhost:5432/mydb")
-EMB = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+PG_CONN = os.getenv("PG_CONN")
+EMB_MODEL = os.getenv("EMB_MODEL")
+EMB = HuggingFaceEmbeddings(model_name=EMB_MODEL)
 LLM = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY"),
     temperature=0.1
 )
 
-# ——— Tool semántica ——————————————————————————————————————————————————
-@tool(description="Devuelve JSON con los 5 work_orders más similares usando pgvector")
+# ——— Semantic Tool ——————————————————————————————————————————————————
+@tool(description="Returns JSON with the 3 most similar work_orders using pgvector")
 def semantic_search(query: str) -> str:
     vec = EMB.embed_query(query)
-    cols = ["wo_id","technician","opco","amm","description","ground_time","man_hours","part_numbers"]
+    cols = ["work_order_id", "ac_model", "aircraft_description", "mel_code", "mel_chapter_code", 
+            "ata_chapter_code", "issue_date", "closing_date", "estimated_groundtime_minutes", 
+            "release_total_aircraft_hours", "aircraft_position_issue", "component_part_number", 
+            "opco_code", "workstep_text", "action_text", "parts_text"]
     sql = f"""
       SELECT {', '.join(cols)}, 1 - (embeddings <=> %s::vector) AS similarity
       FROM work_orders
+      WHERE embeddings IS NOT NULL
       ORDER BY embeddings <=> %s::vector
       LIMIT 3;
     """
@@ -44,18 +49,22 @@ def semantic_search(query: str) -> str:
     results = []
     for row in rows:
         rec = dict(zip(cols + ["similarity"], row))
-        # Convertir Decimals a float
+        # Convertir tipos no serializables
         for k, v in rec.items():
             if isinstance(v, Decimal):
                 rec[k] = float(v)
+            elif hasattr(v, 'isoformat'):  # Para objetos date/datetime
+                rec[k] = v.isoformat()
+            elif v is None:
+                rec[k] = None
         results.append(rec)
 
     return json.dumps(results)
 
-# ——— Nodos del flujo —————————————————————————————————————————————————
+# ——— Flow Nodes —————————————————————————————————————————————————
 def decide_action(state: ChatState) -> Dict:
     resp = LLM.invoke([
-        SystemMessage("Si menciona buscar/encontrar/similares/ADDs o conceptos aeronautica responde 'search', sino 'direct'"),
+        SystemMessage("If it mentions search/find/similar/ADDs or aeronautical concepts respond 'search', otherwise 'direct'"),
         HumanMessage(state["input"])
     ])
     return {"next_action": "search" if "search" in resp.content.lower() else "direct"}
@@ -74,16 +83,16 @@ def compute_insights(state: ChatState) -> Dict:
        # f"- WO: {r['wo_id']}, Desc: {r['description']}, Parts: {r['part_numbers']}" for r in recs
    # )
     prompt = (
-        f"Consulta del usuario: {state['input']}\n"
-        f"Resultados similares encontrados:\n{recs}\n"
-        "Analiza los resultados y responde de forma breve y concisa (máx. 50 palabras):\n"
-        "1. Caso más similar.\n"
-        "2. Solo si el usuario mencionó “AMM”, indica qué AMM se repite.\n"
-        "3. Solo si el usuario mencionó “part” o “PN-”, indica qué part numbers se repiten y si no repetidos haz un resumen de los utilizados\n"
-        "4. Menciona cualquier otro patrón relevante.\n"
-        "5. Siempre calcula el promedio entre registros de los campos numericos, como man_hours (si los tienes en los registros)"
+        f"User query: {state['input']}\n"
+        f"Similar results found:\n{recs}\n"
+        "Analyze the results and respond briefly and concisely (max 50 words):\n"
+        "1. Most similar case.\n"
+        "2. If user mentioned 'AMM', identify which AMM appears most frequently.\n"
+        "3. If user mentioned 'part' or 'PN-', identify repeated part numbers or summarize unique ones used.\n"
+        "4. Highlight any other relevant patterns.\n"
+        "5. Always calculate averages for numeric fields like estimated_groundtime_minutes (if available in records)."
     )
-    # Llama al LLM para obtener el análisis
+    # Call LLM to get analysis
     analysis = LLM.invoke([HumanMessage(prompt)]).content
 
     return {
