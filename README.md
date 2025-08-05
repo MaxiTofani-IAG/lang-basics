@@ -53,6 +53,7 @@ Para que tu CSV funcione correctamente, necesitas crear un DDL que coincida con 
 1. **Analiza tu CSV**: Revisa los headers y tipos de datos
 2. **Crea el archivo DDL**: Modifica `postgres-docker/init-db/01_create_table.sql`
 3. **Mapea los tipos de datos**:
+
    ```sql
    -- Ejemplo de mapeo de tipos
    VARCHAR(20)     -- Para IDs cortos
@@ -65,13 +66,14 @@ Para que tu CSV funcione correctamente, necesitas crear un DDL que coincida con 
    ```
 
 4. **Estructura base** (copia y adapta):
+
    ```sql
    CREATE TABLE work_orders (
        work_order_id VARCHAR(20) PRIMARY KEY,
        ac_model VARCHAR(50),
        aircraft_description TEXT,
        -- ... tus columnas aquí ...
-       
+
        -- Columnas para embeddings (requeridas)
        embeddings vector(1024),
        joined_text TEXT
@@ -100,6 +102,7 @@ Para que tu CSV funcione correctamente, necesitas crear un DDL que coincida con 
 ### 1. Levantar base de datos
 
 ```sh
+python util/reset_db.py --docker
 docker compose -f .\postgres-docker\docker-compose.yml down -v
 docker compose -f .\postgres-docker\docker-compose.yml up -d
 ```
@@ -204,6 +207,7 @@ python util/reset_db.py --quick
 ```
 
 **Diferencias:**
+
 - **`--docker`**: Para y elimina el contenedor Docker, elimina volúmenes, y reinicia todo desde cero
 - **`--quick`**: Solo elimina y recrea la base de datos (más rápido, mantiene Docker)
 

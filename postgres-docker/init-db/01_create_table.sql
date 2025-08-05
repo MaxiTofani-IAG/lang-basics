@@ -1,6 +1,7 @@
 -- Crear tabla work_orders
 CREATE TABLE work_orders (
     work_order_id VARCHAR(20) PRIMARY KEY,
+    work_order_type VARCHAR(20),
     ac_model VARCHAR(50),
     aircraft_description TEXT,
     mel_detail_id VARCHAR(50),
@@ -17,6 +18,7 @@ CREATE TABLE work_orders (
     workstep_text TEXT,
     action_text TEXT,
     parts_text TEXT,
+    transfer_reason_text TEXT,
 
     -- Embeddings vectoriales
     embeddings vector(1024),

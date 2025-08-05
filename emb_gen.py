@@ -20,6 +20,7 @@ EMB_MODEL = os.getenv("EMB_MODEL")
 # Configuración de columnas a vectorizar (puedes modificar esta lista)
 COLUMNS_TO_VECTORIZE = [
     'work_order_id',
+    'work_order_type',
     'ac_model',
     'aircraft_description', 
     'mel_code',
@@ -29,7 +30,8 @@ COLUMNS_TO_VECTORIZE = [
     'component_part_number',
     'workstep_text',
     'action_text',
-    'parts_text'
+    'parts_text',
+    'transfer_reason_text'
 ]
 
 def setup_audit_logger():
@@ -37,6 +39,7 @@ def setup_audit_logger():
     # Crear nombre de archivo con timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f"logs/embeddings_audit_{timestamp}.log"
+    os.makedirs(os.path.dirname(log_filename), exist_ok=True)
     
     # Configurar logger de auditoría
     audit_logger = logging.getLogger('audit')
