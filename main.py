@@ -55,7 +55,7 @@ class ChatState(TypedDict):
 
 # ——— Global Configuration ——————————————————————————————————————————————
 PG_CONN = os.getenv("PG_CONN", "postgresql://user:pass@localhost:5432/mydb")
-EMB = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+EMB = HuggingFaceEmbeddings(model_name="BAAI/bge-large-en-v1.5")
 LLM = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY"),
@@ -68,7 +68,21 @@ def semantic_search(query: str) -> str:
     """Perform semantic search on work orders database"""
     try:
         vec = EMB.embed_query(query)
-        cols = ["wo_id","technician","opco","amm","description","ground_time","man_hours","part_numbers"]
+        cols = [
+            'work_order_id',
+            'work_order_type',
+            'ac_model',
+            'aircraft_description', 
+            'mel_code',
+            'mel_chapter_code',
+            'ata_chapter_code',
+            'aircraft_position_issue',
+            'component_part_number',
+            'workstep_text',
+            'action_text',
+            'parts_text',
+            'transfer_reason_text'
+        ]
         
         # First, let's check if the embeddings column exists and has data
         check_sql = "SELECT COUNT(*) FROM work_orders WHERE embeddings IS NOT NULL LIMIT 1;"
